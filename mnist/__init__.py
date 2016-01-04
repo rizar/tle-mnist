@@ -2,6 +2,8 @@
 
 import sys
 import logging
+import numpy
+import json
 from argparse import ArgumentParser
 
 from theano import tensor
@@ -42,7 +44,7 @@ class CallbackExtension(SimpleExtension):
         self.callback()
 
 
-def main(save_to, cost, learning_rate, momentum, num_epochs):
+def main(save_to, cost_name, learning_rate, momentum, num_epochs):
     mlp = MLP([None], [784, 10],
               weights_init=IsotropicGaussian(0.01),
               biases_init=Constant(0))
@@ -59,29 +61,29 @@ def main(save_to, cost, learning_rate, momentum, num_epochs):
     score_diff = scores - target_scores
 
     # Logistic Regression
-    if cost == 'lr':
+    if cost_name == 'lr':
         cost = Softmax().categorical_cross_entropy(y.flatten(), scores).mean()
     # MSE
-    elif cost == 'mse':
+    elif cost_name == 'mse':
         cost = ((scores - target_scores) ** 2).mean()
     # Perceptron
-    elif cost == 'percetron':
+    elif cost_name == 'percetron':
         cost = (scores.max(axis=1) - scores[indices, y.flatten()]).mean()
     # TLE
-    elif cost == 'minmin':
+    elif cost_name == 'minmin':
         cost = abs(score_diff[indices, y.flatten()]).mean()
         cost += abs(score_diff[indices, scores.argmax(axis=1)]).mean()
     # TLEcut
-    elif cost == 'minmin_cut':
+    elif cost_name == 'minmin_cut':
         # Score of the groundtruth should be greater or equal than its target score
         cost = tensor.maximum(0, -score_diff[indices, y.flatten()]).mean()
         # Score of the prediction should be less or equal than its actual score
         cost += tensor.maximum(0, score_diff[indices, scores.argmax(axis=1)]).mean()
     # TLE2
-    elif cost == 'minmin2':
+    elif cost_name == 'minmin2':
         cost = ((score_diff[tensor.arange(y.shape[0]), y.flatten()]) ** 2).mean()
         cost += ((score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]) ** 2).mean()
-    elif cost == 'direct':
+    elif cost_name == 'direct':
         # Direct loss minimization
         epsilon = 0.1
         cost = (- scores[tensor.arange(y.shape[0]), (scores + epsilon * target_scores).argmax(axis=1)]
@@ -153,7 +155,7 @@ def main(save_to, cost, learning_rate, momentum, num_epochs):
     main_loop.run()
 
     df = pandas.DataFrame.from_dict(main_loop.log, orient='index')
-    res = {'cost' : cost,
+    res = {'cost' : cost_name,
            'learning_rate' : learning_rate,
            'momentum' : momentum,
            'train_cost' : df.train_cost.iloc[-1],
@@ -162,7 +164,8 @@ def main(save_to, cost, learning_rate, momentum, num_epochs):
            'train_error' : df.train_error_rate.iloc[-1],
            'test_error' : df.test_error_rate.iloc[-1],
            'best_test_error' : df.test_error_rate.min()}
-    print repr(res)
+    res = {k: float(v) if isinstance(v, numpy.ndarray) else v for k, v in res.items()}
+    json.dump(res, sys.stdout)
     sys.stdout.flush()
 
 
