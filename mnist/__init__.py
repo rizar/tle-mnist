@@ -99,9 +99,9 @@ def main(save_to, cost, learning_rate, momentum, num_epochs):
     mnist_train = MNIST(("train",))
     mnist_test = MNIST(("test",))
 
-    if not learning_rate:
+    if learning_rate == None:
         learning_rate = 0.0001
-    if not momentum:
+    if momentum == None:
         momentum = 0.99
     rule = Momentum(learning_rate=learning_rate,
                     momentum=momentum)
