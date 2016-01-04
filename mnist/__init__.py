@@ -189,5 +189,5 @@ if __name__ == "__main__":
             raise ValueError("If you want grid search, do not specify hyperparameters")
         for lr in [0.00001, 0.001, 0.01]:
             for mom in [0, 0.9, 0.99]:
-                main(args.save_to, args.cost, lr, mom, args.num_epochs)
+                main("{}_{}_{}.zip".format(args.save_to, lr, mom), args.cost, lr, mom, args.num_epochs)
 
