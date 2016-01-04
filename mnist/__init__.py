@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import sys
 import logging
 from argparse import ArgumentParser
 
 from theano import tensor
+import pandas
 
 from blocks.algorithms import GradientDescent, Scale, Momentum
 from blocks.bricks import MLP, Tanh, Softmax, WEIGHT
@@ -40,7 +42,7 @@ class CallbackExtension(SimpleExtension):
         self.callback()
 
 
-def main(save_to, num_epochs):
+def main(save_to, cost, learning_rate, momentum, num_epochs):
     mlp = MLP([None], [784, 10],
               weights_init=IsotropicGaussian(0.01),
               biases_init=Constant(0))
@@ -49,50 +51,60 @@ def main(save_to, num_epochs):
     y = tensor.lmatrix('targets')
     scores = mlp.apply(x)
 
+    batch_size = y.shape[0]
+    indices = tensor.arange(y.shape[0])
     target_scores = tensor.set_subtensor(
-        tensor.zeros((y.shape[0], 10))[tensor.arange(y.shape[0]), y.flatten()],
+        tensor.zeros((batch_size, 10))[indices, y.flatten()],
         1)
     score_diff = scores - target_scores
 
     # Logistic Regression
-    # cost = Softmax().categorical_cross_entropy(y.flatten(), scores).mean()
-
+    if cost == 'lr':
+        cost = Softmax().categorical_cross_entropy(y.flatten(), scores).mean()
     # MSE
-    # cost = ((scores - target_scores) ** 2).mean()
-
+    elif cost == 'mse':
+        cost = ((scores - target_scores) ** 2).mean()
     # Perceptron
-    cost = (scores.max(axis=1) - scores[tensor.arange(y.shape[0]), y.flatten()]).mean()
-
+    elif cost == 'percetron':
+        cost = (scores.max(axis=1) - scores[indices, y.flatten()]).mean()
     # TLE
-    # cost = abs(score_diff[tensor.arange(y.shape[0]), y.flatten()]).mean()
-    # cost += abs(score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]).mean()
-
+    elif cost == 'minmin':
+        cost = abs(score_diff[indices, y.flatten()]).mean()
+        cost += abs(score_diff[indices, scores.argmax(axis=1)]).mean()
     # TLEcut
-    # Score of the groundtruth should be greater or equal than its target score
-    # cost = tensor.maximum(0, -score_diff[tensor.arange(y.shape[0]), y.flatten()]).mean()
-    # Score of the prediction should be less or equal than its actual score
-    # cost += tensor.maximum(0, score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]).mean()
-
+    elif cost == 'minmin_cut':
+        # Score of the groundtruth should be greater or equal than its target score
+        cost = tensor.maximum(0, -score_diff[indices, y.flatten()]).mean()
+        # Score of the prediction should be less or equal than its actual score
+        cost += tensor.maximum(0, score_diff[indices, scores.argmax(axis=1)]).mean()
     # TLE2
-    # score_diff = scores - target_scores
-    # cost = ((score_diff[tensor.arange(y.shape[0]), y.flatten()]) ** 2).mean()
-    # cost += ((score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]) ** 2).mean()
-
-    # Direct loss minimization
-    # epsilon = 0.1
-    # cost = (- scores[tensor.arange(y.shape[0]), (scores + epsilon * target_scores).argmax(axis=1)]
-    #         + scores[tensor.arange(y.shape[0]), scores.argmax(axis=1)]).mean()
-    # cost /= epsilon
+    elif cost == 'minmin2':
+        cost = ((score_diff[tensor.arange(y.shape[0]), y.flatten()]) ** 2).mean()
+        cost += ((score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]) ** 2).mean()
+    elif cost == 'direct':
+        # Direct loss minimization
+        epsilon = 0.1
+        cost = (- scores[tensor.arange(y.shape[0]), (scores + epsilon * target_scores).argmax(axis=1)]
+                + scores[tensor.arange(y.shape[0]), scores.argmax(axis=1)]).mean()
+        cost /= epsilon
+    else:
+        raise ValueError("Unknown cost " + cost)
 
     error_rate = MisclassificationRate().apply(y.flatten(), scores)
+    error_rate.name = 'error_rate'
 
     cg = ComputationGraph([cost])
-    cost.name = 'final_cost'
+    cost.name = 'cost'
 
     mnist_train = MNIST(("train",))
     mnist_test = MNIST(("test",))
 
-    rule = Momentum(learning_rate=0.00001, momentum=0.999)
+    if not learning_rate:
+        learning_rate = 0.0001
+    if not momentum:
+        momentum = 0.99
+    rule = Momentum(learning_rate=learning_rate,
+                    momentum=momentum)
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
         step_rule=rule)
@@ -107,9 +119,9 @@ def main(save_to, num_epochs):
                                   mnist_test.num_examples, 500)),
                           which_sources=('features',)),
                       prefix="test"),
-                  CallbackExtension(
-                      lambda: rule.learning_rate.set_value(rule.learning_rate.get_value() * 0.9),
-                      after_epoch=True),
+                  # CallbackExtension(
+                  #    lambda: rule.learning_rate.set_value(rule.learning_rate.get_value() * 0.9),
+                  #    after_epoch=True),
                   TrainingDataMonitoring(
                       [cost, error_rate,
                        aggregation.mean(algorithm.total_gradient_norm),
@@ -123,8 +135,8 @@ def main(save_to, num_epochs):
         extensions.append(Plot(
             'MNIST example',
             channels=[
-                ['test_final_cost',
-                 'test_misclassificationrate_apply_error_rate'],
+                ['test_cost',
+                 'test_error_rate'],
                 ['train_total_gradient_norm']]))
 
     main_loop = MainLoop(
@@ -140,14 +152,42 @@ def main(save_to, num_epochs):
 
     main_loop.run()
 
+    df = pandas.DataFrame.from_dict(main_loop.log, orient='index')
+    res = {'cost' : cost,
+           'learning_rate' : learning_rate,
+           'momentum' : momentum,
+           'train_cost' : df.train_cost.iloc[-1],
+           'test_cost' : df.test_cost.iloc[-1],
+           'best_test_cost' : df.test_cost.min(),
+           'train_error' : df.train_error_rate.iloc[-1],
+           'test_error' : df.test_error_rate.iloc[-1],
+           'best_test_error' : df.test_error_rate.min()}
+    print repr(res)
+    sys.stdout.flush()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training an MLP on"
                             " the MNIST dataset.")
     parser.add_argument("--num-epochs", type=int, default=2,
                         help="Number of training epochs to do.")
+    parser.add_argument("--cost", type=str, help="Cost type")
+    parser.add_argument("--learning-rate", type=float, help="Learning rate")
+    parser.add_argument("--momentum", type=float, help="Momentum")
+    parser.add_argument("--grid-search", action="store_true",
+                        default=False, help="Do grid search")
     parser.add_argument("save_to", default="mnist.pkl", nargs="?",
                         help=("Destination to save the state of the training "
                               "process."))
     args = parser.parse_args()
-    main(args.save_to, args.num_epochs)
+
+    if not args.grid_search:
+        main(args.save_to, args.cost, args.learning_rate, args.momentum, args.num_epochs)
+    else:
+        if args.learning_rate or args.momentum:
+            raise ValueError("If you want grid search, do not specify hyperparameters")
+        for lr in [0.00001, 0.001, 0.01]:
+            for mom in [0, 0.9, 0.99]:
+                main(args.save_to, args.cost, lr, mom, args.num_epochs)
+
