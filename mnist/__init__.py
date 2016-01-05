@@ -65,7 +65,7 @@ def main(save_to, cost_name, learning_rate, momentum, num_epochs):
         cost = Softmax().categorical_cross_entropy(y.flatten(), scores).mean()
     # MSE
     elif cost_name == 'mse':
-        cost = ((scores - target_scores) ** 2).mean()
+        cost = (score_diff ** 2).mean()
     # Perceptron
     elif cost_name == 'perceptron':
         cost = (scores.max(axis=1) - scores[indices, y.flatten()]).mean()
