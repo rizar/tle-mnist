@@ -83,12 +83,15 @@ def main(save_to, cost_name, learning_rate, momentum, num_epochs):
     elif cost_name == 'minmin2':
         cost = ((score_diff[tensor.arange(y.shape[0]), y.flatten()]) ** 2).mean()
         cost += ((score_diff[tensor.arange(y.shape[0]), scores.argmax(axis=1)]) ** 2).mean()
+    # Direct loss minimization
     elif cost_name == 'direct':
-        # Direct loss minimization
         epsilon = 0.1
         cost = (- scores[indices, (scores + epsilon * target_scores).argmax(axis=1)]
                 + scores[indices, scores.argmax(axis=1)]).mean()
         cost /= epsilon
+    elif cost_name == 'svm':
+        cost = (scores[indices, (scores - 1 * target_scores).argmax(axis=1)]
+                - scores[indices, y.flatten()]).mean()
     else:
         raise ValueError("Unknown cost " + cost)
 
