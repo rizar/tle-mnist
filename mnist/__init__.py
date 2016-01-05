@@ -104,7 +104,7 @@ def main(save_to, cost_name, learning_rate, momentum, num_epochs):
     if learning_rate == None:
         learning_rate = 0.0001
     if momentum == None:
-        momentum = 0.99
+        momentum = 0.0
     rule = Momentum(learning_rate=learning_rate,
                     momentum=momentum)
     algorithm = GradientDescent(
