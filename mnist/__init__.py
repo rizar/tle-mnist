@@ -67,7 +67,7 @@ def main(save_to, cost_name, learning_rate, momentum, num_epochs):
     elif cost_name == 'mse':
         cost = ((scores - target_scores) ** 2).mean()
     # Perceptron
-    elif cost_name == 'percetron':
+    elif cost_name == 'perceptron':
         cost = (scores.max(axis=1) - scores[indices, y.flatten()]).mean()
     # TLE
     elif cost_name == 'minmin':
@@ -190,7 +190,8 @@ if __name__ == "__main__":
     else:
         if args.learning_rate or args.momentum:
             raise ValueError("If you want grid search, do not specify hyperparameters")
-        for lr in [0.00001, 0.001, 0.001, 0.01]:
-            for mom in [0, 0.9, 0.99]:
-                main("{}_{}_{}.zip".format(args.save_to, lr, mom), args.cost, lr, mom, args.num_epochs)
+        for lr in [0.000001, 0.00001, 0.0001, 0.001, 0.01]:
+            for mom in [0, 0.9, 0.99, 0.999]:
+                if lr / mom < 0.009:
+                    main("{}_{}_{}.zip".format(args.save_to, lr, mom), args.cost, lr, mom, args.num_epochs)
 
