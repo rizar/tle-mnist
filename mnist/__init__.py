@@ -86,8 +86,8 @@ def main(save_to, cost_name, learning_rate, momentum, num_epochs):
     elif cost_name == 'direct':
         # Direct loss minimization
         epsilon = 0.1
-        cost = (- scores[tensor.arange(y.shape[0]), (scores + epsilon * target_scores).argmax(axis=1)]
-                + scores[tensor.arange(y.shape[0]), scores.argmax(axis=1)]).mean()
+        cost = (- scores[indices, (scores + epsilon * target_scores).argmax(axis=1)]
+                + scores[indices, scores.argmax(axis=1)]).mean()
         cost /= epsilon
     else:
         raise ValueError("Unknown cost " + cost)
